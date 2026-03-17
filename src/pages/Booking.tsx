@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useGameStore } from "../store/gameStore";
 import Button from "../ui/Button";
+import { generatePromo } from "../lib/openai";
 import type { BookedSegment, GMSave, SegmentType } from "../domain/types";
 
 const segmentTypeLabels: Record<SegmentType, string> = {
@@ -18,10 +19,16 @@ export default function Booking() {
   const [type, setType] = useState<SegmentType>("match_single");
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
 
+  // Promo generator state
+  const [promoStar, setPromoStar] = useState("");
+  const [promoText, setPromoText] = useState("");
+  const [promoLoading, setPromoLoading] = useState(false);
+
   const save = activeSave();
   if (!save) { navigate("/menu"); return null; }
 
   const available = save.roster.filter((s) => s.brand === save.brand && !s.injured);
+  const isPromoType = ["promo", "angle", "interview"].includes(type);
 
   function toggleParticipant(id: string) {
     setSelectedIds((prev) =>
@@ -44,10 +51,31 @@ export default function Booking() {
     navigate("/show-results");
   }
 
+  async function handleGeneratePromo() {
+    if (!save) return;
+    const star = save.roster.find((s) => s.id === promoStar);
+    if (!star) return;
+    setPromoLoading(true);
+    setPromoText("");
+    try {
+      const rivalry = save.rivalries.find(
+        (r) => r.active && (r.superstarAId === star.id || r.superstarBId === star.id)
+      );
+      const rivalId = rivalry
+        ? rivalry.superstarAId === star.id ? rivalry.superstarBId : rivalry.superstarAId
+        : undefined;
+      const rivalName = rivalId ? save.roster.find((s) => s.id === rivalId)?.name : undefined;
+      const text = await generatePromo(star, rivalName);
+      setPromoText(text);
+    } finally {
+      setPromoLoading(false);
+    }
+  }
+
   const needsMinParticipants =
     (type === "match_single" && selectedIds.length < 2) ||
     (type === "match_tag" && selectedIds.length < 4) ||
-    (["promo", "angle", "interview"].includes(type) && selectedIds.length < 1);
+    (isPromoType && selectedIds.length < 1);
 
   return (
     <div className="max-w-4xl mx-auto flex flex-col gap-6">
@@ -55,15 +83,13 @@ export default function Booking() {
         <h1 className="text-2xl font-black text-white">Booking — Semaine {save.week}</h1>
         <div className="flex gap-2">
           <Button variant="ghost" onClick={() => navigate("/week")}>← Hub</Button>
-          <Button
-            onClick={handleRunShow}
-            disabled={save.bookedShow.length === 0}
-          >
+          <Button onClick={handleRunShow} disabled={save.bookedShow.length === 0}>
             Lancer le Show ({save.bookedShow.length} segments) →
           </Button>
         </div>
       </div>
 
+      {/* Segment type selector */}
       <div className="grid grid-cols-5 gap-2">
         {(Object.keys(segmentTypeLabels) as SegmentType[]).map((t) => (
           <button
@@ -86,7 +112,7 @@ export default function Booking() {
           <h2 className="text-xs uppercase tracking-widest text-gray-500">
             Participants sélectionnés : {selectedIds.length}
           </h2>
-          <div className="flex flex-col gap-1 max-h-72 overflow-y-auto">
+          <div className="flex flex-col gap-1 max-h-60 overflow-y-auto">
             {available.map((s) => (
               <button
                 key={s.id}
@@ -125,6 +151,44 @@ export default function Booking() {
             />
           ))}
         </div>
+      </div>
+
+      {/* ── Générateur de promo IA ── */}
+      <div className="bg-gray-900 border border-purple-900/50 rounded-lg p-4 flex flex-col gap-3">
+        <div className="flex items-center gap-2">
+          <span className="text-purple-400 text-sm font-bold">✦ IA — Générateur de Promo</span>
+          <span className="text-xs text-gray-500">GPT-4o mini</span>
+        </div>
+
+        <div className="flex gap-3">
+          <select
+            className="flex-1 bg-gray-800 border border-gray-700 text-white rounded px-3 py-2 text-sm"
+            value={promoStar}
+            onChange={(e) => { setPromoStar(e.target.value); setPromoText(""); }}
+          >
+            <option value="">— Choisir une superstar —</option>
+            {available.map((s) => (
+              <option key={s.id} value={s.id}>{s.name} (Mic {s.mic})</option>
+            ))}
+          </select>
+          <Button
+            onClick={handleGeneratePromo}
+            disabled={!promoStar || promoLoading}
+            variant="secondary"
+          >
+            {promoLoading ? "Génération..." : "Générer"}
+          </Button>
+        </div>
+
+        {promoLoading && (
+          <div className="text-purple-300 text-sm animate-pulse">L'IA écrit la promo...</div>
+        )}
+
+        {promoText && (
+          <div className="bg-gray-800 border border-purple-800/40 rounded p-3 text-sm text-gray-200 whitespace-pre-wrap leading-relaxed italic">
+            "{promoText}"
+          </div>
+        )}
       </div>
     </div>
   );

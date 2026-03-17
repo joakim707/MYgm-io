@@ -1,6 +1,8 @@
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useGameStore } from "../store/gameStore";
 import Button from "../ui/Button";
+import { generateShowRecap, generateShowPoster } from "../lib/openai";
 
 const segmentTypeLabels: Record<string, string> = {
   match_single: "Match",
@@ -28,12 +30,41 @@ function ratingLabel(r: number) {
 export default function Results() {
   const { activeSave } = useGameStore();
   const navigate = useNavigate();
-  const save = activeSave();
 
+  const [recap, setRecap] = useState("");
+  const [recapLoading, setRecapLoading] = useState(false);
+  const [posterUrl, setPosterUrl] = useState("");
+  const [posterLoading, setPosterLoading] = useState(false);
+
+  const save = activeSave();
   if (!save) { navigate("/menu"); return null; }
 
   const lastShow = save.showHistory[save.showHistory.length - 1];
   if (!lastShow) { navigate("/week"); return null; }
+
+  async function handleGenerateRecap() {
+    if (!save) return;
+    setRecapLoading(true);
+    setRecap("");
+    try {
+      const text = await generateShowRecap(save);
+      setRecap(text);
+    } finally {
+      setRecapLoading(false);
+    }
+  }
+
+  async function handleGeneratePoster() {
+    if (!save) return;
+    setPosterLoading(true);
+    setPosterUrl("");
+    try {
+      const url = await generateShowPoster(save);
+      setPosterUrl(url);
+    } finally {
+      setPosterLoading(false);
+    }
+  }
 
   return (
     <div className="max-w-2xl mx-auto flex flex-col gap-6">
@@ -91,6 +122,77 @@ export default function Results() {
             </div>
           );
         })}
+      </div>
+
+      {/* ── IA Recap ── */}
+      <div className="bg-gray-900 border border-purple-900/50 rounded-lg p-4 flex flex-col gap-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <span className="text-purple-400 text-sm font-bold">✦ IA — Article de Presse</span>
+            <span className="text-xs text-gray-500">GPT-4o mini</span>
+          </div>
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={handleGenerateRecap}
+            disabled={recapLoading}
+          >
+            {recapLoading ? "Rédaction..." : "Générer l'article"}
+          </Button>
+        </div>
+
+        {recapLoading && (
+          <div className="text-purple-300 text-sm animate-pulse">Le journaliste rédige son article...</div>
+        )}
+
+        {recap && (
+          <div className="bg-gray-800 border border-purple-800/40 rounded p-4 text-sm text-gray-200 whitespace-pre-wrap leading-relaxed">
+            {recap}
+          </div>
+        )}
+      </div>
+
+      {/* ── DALL-E Affiche ── */}
+      <div className="bg-gray-900 border border-purple-900/50 rounded-lg p-4 flex flex-col gap-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <span className="text-purple-400 text-sm font-bold">✦ IA — Affiche du Show</span>
+            <span className="text-xs text-gray-500">DALL-E 3</span>
+          </div>
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={handleGeneratePoster}
+            disabled={posterLoading}
+          >
+            {posterLoading ? "Génération (~15s)..." : "Générer l'affiche"}
+          </Button>
+        </div>
+
+        {posterLoading && (
+          <div className="text-purple-300 text-sm animate-pulse">DALL-E 3 crée l'affiche du show...</div>
+        )}
+
+        {posterUrl && (
+          <div className="rounded-lg overflow-hidden border border-purple-800/40">
+            <img
+              src={posterUrl}
+              alt={`Affiche ${save.brand} semaine ${lastShow.week}`}
+              className="w-full object-cover"
+            />
+            <div className="bg-gray-800 px-3 py-2 flex justify-between items-center">
+              <span className="text-xs text-gray-400">{save.brand.toUpperCase()} · Semaine {lastShow.week} · GM {save.gmName}</span>
+              <a
+                href={posterUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-xs text-purple-400 hover:text-purple-200"
+              >
+                Ouvrir ↗
+              </a>
+            </div>
+          </div>
+        )}
       </div>
 
       <Button size="lg" onClick={() => navigate("/week")}>
