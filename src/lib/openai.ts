@@ -1,10 +1,16 @@
 import OpenAI from "openai";
 import type { GMSave, Superstar } from "../domain/types";
 
-const client = new OpenAI({
-  apiKey: import.meta.env.VITE_OPENAI_API_KEY,
-  dangerouslyAllowBrowser: true,
-});
+let _client: OpenAI | null = null;
+
+function getClient(): OpenAI {
+  if (!_client) {
+    const apiKey = import.meta.env.VITE_OPENAI_API_KEY as string | undefined;
+    if (!apiKey) throw new Error("VITE_OPENAI_API_KEY manquant. Ajoute-le dans .env.local et dans les variables d'environnement Vercel.");
+    _client = new OpenAI({ apiKey, dangerouslyAllowBrowser: true });
+  }
+  return _client;
+}
 
 // ─── 1. Génération de promo ───────────────────────────────────────────────────
 
@@ -26,7 +32,7 @@ ${context ? `Contexte : ${context}` : ""}
 
 La promo doit être en français, dramatique, dans le style WWE/AEW. Commence directement par le discours, sans introduction.`;
 
-  const response = await client.chat.completions.create({
+  const response = await getClient().chat.completions.create({
     model: "gpt-4o-mini",
     messages: [{ role: "user", content: prompt }],
     max_tokens: 400,
@@ -63,7 +69,7 @@ ${segmentsSummary}
 
 Écris en français dans un style dramatique et passionné. Commence par un titre accrocheur.`;
 
-  const response = await client.chat.completions.create({
+  const response = await getClient().chat.completions.create({
     model: "gpt-4o-mini",
     messages: [{ role: "user", content: prompt }],
     max_tokens: 500,
@@ -118,7 +124,7 @@ Réponds UNIQUEMENT avec un JSON valide, sans markdown, sans backtick, exactemen
 
 Utilise UNIQUEMENT les noms exacts du roster fourni.`;
 
-  const response = await client.chat.completions.create({
+  const response = await getClient().chat.completions.create({
     model: "gpt-4o-mini",
     messages: [{ role: "user", content: prompt }],
     max_tokens: 600,
@@ -151,7 +157,7 @@ export async function generateShowPoster(save: GMSave): Promise<string> {
 
   const prompt = `Professional wrestling event poster for "${save.brand.toUpperCase()} WEEK ${save.week}" by GM "${save.gmName}". Style: ${mood}, ${brandColor} color scheme, dramatic lighting, wrestling ring silhouette, crowd in background, bold championship belt graphic, retro 90s WWE poster aesthetic. High contrast, cinematic composition.`;
 
-  const response = await client.images.generate({
+  const response = await getClient().images.generate({
     model: "dall-e-3",
     prompt,
     n: 1,
